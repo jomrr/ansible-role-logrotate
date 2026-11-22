@@ -1,0 +1,22 @@
+---
+# role: logrotate
+# file: tasks/web.yml
+
+- name: LOGROTATE | Check web directories before rotating as root
+  ansible.builtin.include_tasks: check_directory.yml
+  loop: "{{ __logrotate_web_paths[__logrotate_web].split() | map('dirname') | unique }}"
+  loop_control:
+    loop_var: __logrotate_directory
+  when: not __logrotate_web_uses_su
+
+- name: LOGROTATE | Apply the web log policy to installed servers
+  become: true
+  become_user: root
+  ansible.builtin.template:
+    src: web.j2
+    dest: "/etc/logrotate.d/{{ __logrotate_web_package }}"
+    owner: root
+    group: root
+    mode: '0644'
+    backup: "{{ ansible_facts.os_family != 'Suse' }}"
+    validate: /usr/sbin/logrotate --debug --state /dev/null %s

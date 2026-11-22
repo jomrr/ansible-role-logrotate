@@ -54,20 +54,10 @@
     loop_var: __logrotate_rule
     label: "{{ __logrotate_rule.name }}"
 
-- name: LOGROTATE | Require a rotation account for application-writable log directories
-  become: true
-  become_user: root
-  ansible.builtin.stat:
-    path: "{{ __logrotate_rule.path | dirname }}"
-    follow: true
-    get_checksum: false
-    get_mime: false
-  register: __logrotate_parent
-  failed_when: >-
-    __logrotate_parent.stat.exists and
-    (__logrotate_parent.stat.woth or
-     (__logrotate_parent.stat.uid != 0 and __logrotate_parent.stat.wusr) or
-     (__logrotate_parent.stat.gid != 0 and __logrotate_parent.stat.wgrp))
+- name: LOGROTATE | Check application directories before rotating as root
+  ansible.builtin.include_tasks: check_directory.yml
+  vars:
+    __logrotate_directory: "{{ __logrotate_rule.path | dirname }}"
   loop: "{{ logrotate_rules }}"
   loop_control:
     loop_var: __logrotate_rule

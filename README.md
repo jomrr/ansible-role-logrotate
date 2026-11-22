@@ -107,7 +107,8 @@ logrotate_rules: []
 
 ## Check Mode
 
-Check mode on a configured host previews package, rule and timer changes. First
+Check mode previews package, rule and timer changes on a configured host. The
+complete configuration check reads the files currently on disk. First
 installation requires the package-provided directory and timer.
 
 ## Service Behavior
@@ -129,6 +130,10 @@ web profiles also run the distribution's httpd-prerotate hooks.
 - `su_user` and `su_group` are required when the log directory is writable by a
   non-root user. Choose an account that can rename and recreate the file. Only
   administrators should be able to edit rotation rules and service units.
+- Fedora ships /var/log/nginx as root:root with mode 0711. Only root can rename
+  or create entries there. The openSUSE nginx profile uses `su nginx nginx` for
+  its nginx-owned directory. For web profiles that rotate as root, the role
+  checks directory ownership and write bits before adoption.
 
 ## Operational Notes
 
@@ -144,10 +149,13 @@ web profiles also run the distribution's httpd-prerotate hooks.
   service names the systemd unit to reload once after rotation. With
   reopen=copytruncate, the writer keeps the same inode. Records written between
   copying and truncation can be lost.
-- Each changed logrotate fragment is checked with `logrotate -d` (debug mode)
-  before installation. This parses the candidate without rotating logs or
-  changing the state file. Each log path must belong to a single rule across all
-  drop-ins.
+- Each changed fragment is checked before installation. After writing the rules
+  and before enabling or restarting the timer, the role checks the complete
+  installed configuration with `logrotate --debug` on every run. A duplicate log
+  entry across files fails convergence. Debug mode preserves log files and the
+  state file. On openSUSE, the check follows the package's choice of main
+  configuration and gives local drop-ins precedence over vendor files with the
+  same relative name.
 - The role changes the system-wide logrotate.timer. Logrotate uses its
   persistent state file to keep daily rules on their daily schedule even when
   the timer checks more frequently.
@@ -161,9 +169,11 @@ web profiles also run the distribution's httpd-prerotate hooks.
   peak traffic. Monitor free space and forward logs off-host when retention is
   mandatory.
 - The 90-day default uses maxage and an unlimited archive count. Multiple
-  rotations per day can coexist. Logrotate checks archive age during rotation,
-  so idle or removed logs can leave older archives. After switching naming or
-  compression schemes, review archives under the old names separately.
+  rotations per day can coexist. Logrotate checks archive age only when the
+  active log rotates. With `notifempty`, an empty log or a retired virtual host
+  can leave archives past the configured age. Include those archives in the
+  site's decommissioning procedure. After switching naming or compression
+  schemes, review archives under the old names separately.
 - The distribution's main configuration must load its drop-in directory. The
   openSUSE package uses logrotate-all for this. Other package rules can set
   their own count, age, file mode or interval. Keep application globs narrow

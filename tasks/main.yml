@@ -67,24 +67,35 @@
     manager: auto
   when: logrotate_web_servers | length > 0
 
-- name: LOGROTATE | Apply the web log policy to installed servers
-  become: true
-  become_user: root
-  ansible.builtin.template:
-    src: web.j2
-    dest: "/etc/logrotate.d/{{ __logrotate_web_package }}"
-    owner: root
-    group: root
-    mode: '0644'
-    backup: "{{ ansible_facts.os_family != 'Suse' }}"
-    validate: /usr/sbin/logrotate --debug --state /dev/null %s
+- name: LOGROTATE | Configure selected web server rules
+  ansible.builtin.include_tasks: web.yml
   vars:
+    __logrotate_web_uses_su: "{{ __logrotate_web == 'nginx' and ansible_facts.os_family == 'Suse' }}"
     __logrotate_web_package: "{{ __logrotate_apache_package if __logrotate_web == 'apache' else 'nginx' }}"
   loop: "{{ logrotate_web_servers }}"
   loop_control:
     loop_var: __logrotate_web
     label: "{{ __logrotate_web_package }}"
   when: __logrotate_web_package in ansible_facts.packages
+
+- name: LOGROTATE | Validate the installed logrotate configuration
+  become: true
+  become_user: root
+  ansible.builtin.command:
+    argv: [/usr/sbin/logrotate, --debug, /etc/logrotate.conf]
+  changed_when: false
+  check_mode: false
+  when: ansible_facts.os_family != 'Suse'
+
+- name: LOGROTATE | Validate the installed openSUSE configuration and effective drop-ins
+  become: true
+  become_user: root
+  ansible.builtin.command:
+    argv: [/usr/bin/bash, -s]
+    stdin: "{{ lookup('ansible.builtin.file', 'check-suse-config.sh') }}"
+  changed_when: false
+  check_mode: false
+  when: ansible_facts.os_family == 'Suse'
 
 - name: LOGROTATE | Create the timer override directory
   become: true

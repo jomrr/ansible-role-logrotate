@@ -13,7 +13,7 @@
     missingok
     notifempty
     sharedscripts
-{% if __logrotate_web == 'nginx' and ansible_facts.os_family == 'Suse' %}
+{% if __logrotate_web_uses_su %}
     su nginx nginx
     create 0640 nginx nginx
 {% else %}

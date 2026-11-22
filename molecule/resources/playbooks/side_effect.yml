@@ -2,9 +2,11 @@
 # role: logrotate
 # file: molecule/resources/playbooks/side_effect.yml
 
-- name: LOGROTATE | Interrupt the rotation schedule
+- name: LOGROTATE | Exercise configuration conflicts and timer recovery
   hosts: all
-  gather_facts: false
+  gather_facts: true
+  vars:
+    __logrotate_conflict_dir: "{{ '/usr/etc/logrotate.d' if ansible_facts.os_family == 'Suse' else '/etc/logrotate.d' }}"
   tasks:
     - name: LOGROTATE | Stop and disable the timer
       become: true
@@ -13,6 +15,44 @@
         name: logrotate.timer
         enabled: false
         state: stopped
+
+    - name: LOGROTATE | Introduce an unmanaged rule overlapping the nginx glob
+      become: true
+      become_user: root
+      ansible.builtin.copy:
+        dest: "{{ __logrotate_conflict_dir }}/zz-molecule-conflict"
+        mode: '0644'
+        content: |
+          /var/log/nginx/molecule-access.log {
+              missingok
+          }
+
+    - name: LOGROTATE | Verify that convergence rejects the conflicting installed configuration
+      block:
+        - name: LOGROTATE | Reapply the role with the unmanaged conflict in place
+          ansible.builtin.include_role:
+            name: "{{ lookup('ansible.builtin.env', 'MOLECULE_PROJECT_DIRECTORY') }}"
+
+        - name: LOGROTATE | Report an undetected conflict
+          ansible.builtin.fail:
+            msg: The role accepted two rules for the same active log.
+
+      rescue:
+        - name: LOGROTATE | Check the native diagnostic for the overlapping log
+          ansible.builtin.assert:
+            that:
+              - ansible_failed_result.rc | default(0) != 0
+              - "'duplicate log entry for /var/log/nginx/molecule-access.log' in __logrotate_diagnostic"
+          vars:
+            __logrotate_diagnostic: "{{ ansible_failed_result.stdout | default('') }} {{ ansible_failed_result.stderr | default('') }}"
+
+      always:
+        - name: LOGROTATE | Remove the conflicting test rule
+          become: true
+          become_user: root
+          ansible.builtin.file:
+            path: "{{ __logrotate_conflict_dir }}/zz-molecule-conflict"
+            state: absent
 
     - name: LOGROTATE | Restore a withdrawn rule to exercise removal on reconvergence
       become: true

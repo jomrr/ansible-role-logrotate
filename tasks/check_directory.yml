@@ -1,0 +1,24 @@
+---
+# role: logrotate
+# file: tasks/check_directory.yml
+
+- name: LOGROTATE | Read log directory permissions
+  become: true
+  become_user: root
+  ansible.builtin.stat:
+    path: "{{ __logrotate_directory }}"
+    follow: true
+    get_checksum: false
+    get_mime: false
+  register: __logrotate_parent
+
+- name: LOGROTATE | Require a rotation account for application-writable log directories
+  ansible.builtin.assert:
+    that:
+      - >-
+        not __logrotate_parent.stat.exists or
+        not (__logrotate_parent.stat.woth or
+             (__logrotate_parent.stat.uid != 0 and __logrotate_parent.stat.wusr) or
+             (__logrotate_parent.stat.gid != 0 and __logrotate_parent.stat.wgrp))
+    fail_msg: "Rotation as root is unsafe in {{ __logrotate_directory }}. Configure a rotation account with su or restrict directory writes to root."
+    quiet: true
