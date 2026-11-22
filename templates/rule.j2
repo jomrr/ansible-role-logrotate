@@ -1,0 +1,29 @@
+# Managed by ansible.
+# file: {{ template_destpath }}
+
+{{ __logrotate_rule.path }} {
+    daily
+    maxsize {{ __logrotate_rule.max_size_mib | default(logrotate_max_size_mib) }}M
+    rotate -1
+    maxage {{ __logrotate_rule.retention_days | default(logrotate_retention_days) }}
+    dateext
+    dateformat -%Y%m%d-%s
+    compress
+    delaycompress
+    missingok
+    notifempty
+    create
+{% if __logrotate_rule.su_user is defined %}
+    su {{ __logrotate_rule.su_user }} {{ __logrotate_rule.su_group }}
+{% endif %}
+{% if __logrotate_rule.reopen | default('none') == 'copytruncate' %}
+    copytruncate
+{% elif __logrotate_rule.reopen | default('none') == 'reload' %}
+    sharedscripts
+    postrotate
+        if /usr/bin/systemctl is-active --quiet {{ __logrotate_rule.service }}; then
+            /usr/bin/systemctl reload {{ __logrotate_rule.service }}
+        fi
+    endscript
+{% endif %}
+}

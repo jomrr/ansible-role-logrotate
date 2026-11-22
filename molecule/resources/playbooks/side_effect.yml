@@ -1,0 +1,23 @@
+---
+# role: logrotate
+# file: molecule/resources/playbooks/side_effect.yml
+
+- name: LOGROTATE | Interrupt the rotation schedule
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: LOGROTATE | Stop and disable the timer
+      become: true
+      become_user: root
+      ansible.builtin.systemd_service:
+        name: logrotate.timer
+        enabled: false
+        state: stopped
+
+    - name: LOGROTATE | Restore a withdrawn rule to exercise removal on reconvergence
+      become: true
+      become_user: root
+      ansible.builtin.copy:
+        dest: /etc/logrotate.d/molecule-retired
+        mode: '0644'
+        content: "# Obsolete application rule.\n"

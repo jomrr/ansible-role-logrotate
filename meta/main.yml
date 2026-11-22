@@ -1,0 +1,17 @@
+---
+# role: logrotate
+# file: meta/main.yml
+
+galaxy_info:
+  author: Jonas Mauer
+  description: Rotate and compress application and web server logs on systemd hosts.
+  galaxy_tags:
+    - logging
+    - logrotate
+    - systemd
+    - linux
+  issue_tracker_url: https://github.com/jomrr/ansible-role-logrotate/issues
+  license: MIT
+  min_ansible_version: "2.22"
+  namespace: jomrr
+  role_name: logrotate

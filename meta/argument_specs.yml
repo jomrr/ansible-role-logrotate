@@ -1,0 +1,116 @@
+---
+# role: logrotate
+# file: meta/argument_specs.yml
+
+argument_specs:
+  main:
+    short_description: Configure age-based retention, size-aware web log rotation and
+      the systemd timer.
+    options:
+      logrotate_retention_days:
+        type: int
+        default: 90
+        description:
+          - Positive archive age in days. Expiry is evaluated when the corresponding active
+            log rotates.
+      logrotate_max_size_mib:
+        type: int
+        default: 100
+        description:
+          - Positive size threshold in MiB for managed web and application logs. A timer
+            check rotates a larger log before its daily rotation.
+      logrotate_check_interval_minutes:
+        type: int
+        choices:
+          - 5
+          - 10
+          - 15
+          - 30
+          - 60
+        default: 60
+        description:
+          - Interval in minutes between logrotate checks.
+      logrotate_web_servers:
+        type: list
+        elements: str
+        choices:
+          - nginx
+          - apache
+        default: []
+        description:
+          - Adopt the standard package rotation file for each selected, installed web server.
+            Run the role after installing the web servers.
+          - An empty list skips adoption. Restore the distribution file when handing a previously
+            adopted server back to its package.
+      logrotate_rules:
+        type: list
+        elements: dict
+        default: []
+        description:
+          - Named files under /etc/logrotate.d. Unlisted files are retained. Set state to
+            absent to remove a file.
+          - Each rule accepts an absolute path or filename glob, optional retention and
+            size limits, a rotation account and a service to reload.
+        required_if:
+          - - state
+            - present
+            - - path
+          - - reopen
+            - reload
+            - - service
+        required_together:
+          - - su_user
+            - su_group
+        options:
+          name:
+            type: str
+            required: true
+            description:
+              - Unique filename starting with a letter, followed by letters, digits, underscores
+                or hyphens. nginx, httpd and apache2 are reserved.
+          state:
+            type: str
+            choices:
+              - present
+              - absent
+            default: present
+            description:
+              - Install or remove the named rule.
+          reopen:
+            type: str
+            choices:
+              - none
+              - reload
+              - copytruncate
+            default: none
+            description:
+              - The writer reopens the file itself (none), reopens on service reload, or
+                keeps the same inode with copytruncate.
+          path:
+            type: str
+            description:
+              - Absolute log path. Filename globs must end in a literal suffix to exclude
+                rotated archives. Specify each log in one rule.
+          retention_days:
+            type: int
+            description:
+              - Positive archive age in days. Defaults to logrotate_retention_days.
+          max_size_mib:
+            type: int
+            description:
+              - Positive size threshold in MiB. Defaults to logrotate_max_size_mib.
+          su_user:
+            type: str
+            description:
+              - User performing rotation in an application-owned directory. Specify together
+                with su_group.
+          su_group:
+            type: str
+            description:
+              - Group performing rotation in an application-owned directory. Specify together
+                with su_user.
+          service:
+            type: str
+            description:
+              - Systemd service unit for reopen=reload. An active unit is reloaded once
+                per matching group.

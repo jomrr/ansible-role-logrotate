@@ -1,0 +1,120 @@
+---
+# role: logrotate
+# file: tasks/main.yml
+
+- name: LOGROTATE | Check the rotation policy
+  ansible.builtin.import_tasks: assert.yml
+
+- name: LOGROTATE | Load platform settings
+  ansible.builtin.include_vars: "{{ lookup('ansible.builtin.first_found', __logrotate_platform_files) }}"
+  vars:
+    __logrotate_platform_files:
+      files:
+        - "{{ ansible_facts.os_family }}.yml"
+      paths:
+        - "{{ role_path }}/vars"
+
+- name: LOGROTATE | Install logrotate
+  become: true
+  become_user: root
+  ansible.builtin.package:
+    name: logrotate
+    state: present
+
+- name: LOGROTATE | Configure system-wide rotation defaults
+  become: true
+  become_user: root
+  ansible.builtin.template:
+    src: policy.j2
+    dest: /etc/logrotate.d/00-ansible-policy
+    owner: root
+    group: root
+    mode: '0644'
+    backup: "{{ ansible_facts.os_family != 'Suse' }}"
+    validate: /usr/sbin/logrotate --debug --state /dev/null %s
+
+- name: LOGROTATE | Withdraw named application rules
+  become: true
+  become_user: root
+  ansible.builtin.file:
+    path: "/etc/logrotate.d/{{ __logrotate_rule.name }}"
+    state: absent
+  loop: "{{ logrotate_rules }}"
+  loop_control:
+    loop_var: __logrotate_rule
+    label: "{{ __logrotate_rule.name }}"
+  when: __logrotate_rule.state | default('present') == 'absent'
+
+- name: LOGROTATE | Configure named application rules
+  become: true
+  become_user: root
+  ansible.builtin.template:
+    src: rule.j2
+    dest: "/etc/logrotate.d/{{ __logrotate_rule.name }}"
+    owner: root
+    group: root
+    mode: '0644'
+    backup: "{{ ansible_facts.os_family != 'Suse' }}"
+    validate: /usr/sbin/logrotate --debug --state /dev/null /etc/logrotate.d/00-ansible-policy %s
+  loop: "{{ logrotate_rules }}"
+  loop_control:
+    loop_var: __logrotate_rule
+    label: "{{ __logrotate_rule.name }}"
+  when: __logrotate_rule.state | default('present') == 'present'
+
+- name: LOGROTATE | Identify installed web server packages
+  ansible.builtin.package_facts:
+    manager: auto
+  when: logrotate_web_servers | length > 0
+
+- name: LOGROTATE | Apply the web log policy to installed servers
+  become: true
+  become_user: root
+  ansible.builtin.template:
+    src: web.j2
+    dest: "/etc/logrotate.d/{{ __logrotate_web_package }}"
+    owner: root
+    group: root
+    mode: '0644'
+    backup: "{{ ansible_facts.os_family != 'Suse' }}"
+    validate: /usr/sbin/logrotate --debug --state /dev/null %s
+  vars:
+    __logrotate_web_package: "{{ __logrotate_apache_package if __logrotate_web == 'apache' else 'nginx' }}"
+  loop: "{{ logrotate_web_servers }}"
+  loop_control:
+    loop_var: __logrotate_web
+    label: "{{ __logrotate_web_package }}"
+  when: __logrotate_web_package in ansible_facts.packages
+
+- name: LOGROTATE | Create the timer override directory
+  become: true
+  become_user: root
+  ansible.builtin.file:
+    path: /etc/systemd/system/logrotate.timer.d
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: LOGROTATE | Configure the check interval
+  become: true
+  become_user: root
+  ansible.builtin.template:
+    src: timer.conf.j2
+    dest: /etc/systemd/system/logrotate.timer.d/50-schedule.conf
+    owner: root
+    group: root
+    mode: '0644'
+    backup: true
+  notify: restart logrotate timer
+
+- name: LOGROTATE | Load timer changes before enabling the schedule
+  ansible.builtin.meta: flush_handlers
+
+- name: LOGROTATE | Enable and start the rotation timer
+  become: true
+  become_user: root
+  ansible.builtin.systemd_service:
+    name: logrotate.timer
+    enabled: true
+    state: started

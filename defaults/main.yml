@@ -1,0 +1,31 @@
+---
+# role: logrotate
+# file: defaults/main.yml
+
+# Deletes rotated archives older than this many days (maxage).
+logrotate_retention_days: 90
+
+# Sets the early rotation threshold in MiB for managed web logs and application rules.
+logrotate_max_size_mib: 100
+
+# Sets the interval between system-wide logrotate timer checks in minutes.
+# Choices: 5, 10, 15, 30, 60
+logrotate_check_interval_minutes: 60
+
+# Selects the installed web server packages whose rotation files the role takes over.
+# Choices: nginx, apache
+logrotate_web_servers: []
+# - nginx
+
+# Manages named rule files with su_user and su_group required for log directories writable by a non-root user.
+logrotate_rules: []
+# - name: example
+#   path: /var/log/example/*.log
+#   max_size_mib: 50
+#   retention_days: 180
+#   su_user: example
+#   su_group: example
+#   reopen: reload
+#   service: example.service
+# - name: retired-example
+#   state: absent

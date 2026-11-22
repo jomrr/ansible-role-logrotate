@@ -1,0 +1,77 @@
+---
+# role: logrotate
+# file: tasks/assert.yml
+
+- name: LOGROTATE | Validate the rotation limits
+  ansible.builtin.assert:
+    that:
+      - logrotate_retention_days | int > 0
+      - logrotate_max_size_mib | int > 0
+      - logrotate_rules | map(attribute='name') | unique(case_sensitive=true) | length == logrotate_rules | length
+    quiet: true
+
+- name: LOGROTATE | Validate rule filenames and reserve web package names
+  ansible.builtin.assert:
+    that:
+      - __logrotate_rule.name is match('^[A-Za-z][A-Za-z0-9_-]*\Z')
+      - __logrotate_rule.name not in ['httpd', 'apache2', 'nginx']
+    quiet: true
+  loop: "{{ logrotate_rules }}"
+  loop_control:
+    loop_var: __logrotate_rule
+    label: "{{ __logrotate_rule.name }}"
+
+- name: LOGROTATE | Validate application log paths and overrides
+  ansible.builtin.assert:
+    that:
+      - __logrotate_rule.path is match('^/(?:[A-Za-z0-9_.@+-]+/)*[A-Za-z0-9_.*@+-]+\Z')
+      - "'..' not in __logrotate_rule.path.split('/')"
+      - not __logrotate_rule.path.endswith('*')
+      - __logrotate_rule.retention_days | default(logrotate_retention_days) | int > 0
+      - __logrotate_rule.max_size_mib | default(logrotate_max_size_mib) | int > 0
+      - __logrotate_rule.su_user is not defined or __logrotate_rule.su_user is match('^[a-zA-Z_][a-zA-Z0-9_.-]*\Z')
+      - __logrotate_rule.su_group is not defined or __logrotate_rule.su_group is match('^[a-zA-Z_][a-zA-Z0-9_.-]*\Z')
+      - __logrotate_rule.service is not defined or __logrotate_rule.reopen | default('none') == 'reload'
+      - __logrotate_rule.service is not defined or __logrotate_rule.service is match('^[a-zA-Z0-9_][a-zA-Z0-9_.@-]*[.]service\Z')
+    quiet: true
+  loop: "{{ logrotate_rules }}"
+  loop_control:
+    loop_var: __logrotate_rule
+    label: "{{ __logrotate_rule.name }}"
+  when: __logrotate_rule.state | default('present') == 'present'
+
+- name: LOGROTATE | Check rule destinations before replacing or removing files
+  become: true
+  become_user: root
+  ansible.builtin.stat:
+    path: "/etc/logrotate.d/{{ __logrotate_rule.name }}"
+    get_checksum: false
+    get_mime: false
+  register: __logrotate_destination
+  failed_when: __logrotate_destination.stat.exists and not __logrotate_destination.stat.isreg
+  loop: "{{ logrotate_rules }}"
+  loop_control:
+    loop_var: __logrotate_rule
+    label: "{{ __logrotate_rule.name }}"
+
+- name: LOGROTATE | Require a rotation account for application-writable log directories
+  become: true
+  become_user: root
+  ansible.builtin.stat:
+    path: "{{ __logrotate_rule.path | dirname }}"
+    follow: true
+    get_checksum: false
+    get_mime: false
+  register: __logrotate_parent
+  failed_when: >-
+    __logrotate_parent.stat.exists and
+    (__logrotate_parent.stat.woth or
+     (__logrotate_parent.stat.uid != 0 and __logrotate_parent.stat.wusr) or
+     (__logrotate_parent.stat.gid != 0 and __logrotate_parent.stat.wgrp))
+  loop: "{{ logrotate_rules }}"
+  loop_control:
+    loop_var: __logrotate_rule
+    label: "{{ __logrotate_rule.name }}"
+  when:
+    - __logrotate_rule.state | default('present') == 'present'
+    - __logrotate_rule.su_user is not defined

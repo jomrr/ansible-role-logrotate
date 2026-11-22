@@ -1,0 +1,38 @@
+# Managed by ansible.
+# file: {{ template_destpath }}
+
+{{ __logrotate_web_paths[__logrotate_web] }} {
+    daily
+    maxsize {{ logrotate_max_size_mib }}M
+    rotate -1
+    maxage {{ logrotate_retention_days }}
+    dateext
+    dateformat -%Y%m%d-%s
+    compress
+    delaycompress
+    missingok
+    notifempty
+    sharedscripts
+{% if __logrotate_web == 'nginx' and ansible_facts.os_family == 'Suse' %}
+    su nginx nginx
+    create 0640 nginx nginx
+{% else %}
+    create 0640
+{% endif %}
+{% if ansible_facts.os_family == 'Debian' %}
+    prerotate
+        if [ -d /etc/logrotate.d/httpd-prerotate ]; then
+            /usr/bin/run-parts /etc/logrotate.d/httpd-prerotate
+        fi
+    endscript
+{% endif %}
+    postrotate
+        if /usr/bin/systemctl is-active --quiet {{ __logrotate_web_package }}.service; then
+{% if __logrotate_web == 'nginx' %}
+            /usr/bin/systemctl kill --kill-whom=main --signal=USR1 nginx.service
+{% else %}
+            /usr/bin/systemctl reload {{ __logrotate_web_package }}.service
+{% endif %}
+        fi
+    endscript
+}

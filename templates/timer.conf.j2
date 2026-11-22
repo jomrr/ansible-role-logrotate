@@ -1,0 +1,9 @@
+# Managed by ansible.
+# file: {{ template_destpath }}
+
+[Timer]
+OnCalendar=
+OnCalendar={{ 'hourly' if logrotate_check_interval_minutes | int == 60 else '*:0/' ~ logrotate_check_interval_minutes }}
+AccuracySec=1min
+RandomizedDelaySec=1min
+Persistent=true
