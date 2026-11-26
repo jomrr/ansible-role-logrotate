@@ -1,12 +1,5 @@
-# Managed by ansible.
+{{ ansible_managed | comment(prefix_count=0, postfix_count=0) }}
 # file: {{ template_destpath }}
 
-daily
-rotate -1
-maxage {{ logrotate_retention_days }}
-dateext
-dateformat -%Y%m%d-%s
-compress
-delaycompress
-notifempty
+{% include '_policy.j2' +%}
 create

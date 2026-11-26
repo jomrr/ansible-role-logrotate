@@ -1,0 +1,10 @@
+---
+# role: logrotate
+# file: tasks/install.yml
+
+- name: install | Install logrotate
+  become: true
+  become_user: root
+  ansible.builtin.package:
+    name: logrotate
+    state: present

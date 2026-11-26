@@ -2,13 +2,13 @@
 # role: logrotate
 # file: molecule/resources/playbooks/side_effect.yml
 
-- name: LOGROTATE | Exercise configuration conflicts and timer recovery
+- name: Exercise configuration conflicts and timer recovery
   hosts: all
   gather_facts: true
   vars:
     __logrotate_conflict_dir: "{{ '/usr/etc/logrotate.d' if ansible_facts.os_family == 'Suse' else '/etc/logrotate.d' }}"
   tasks:
-    - name: LOGROTATE | Stop and disable the timer
+    - name: Stop and disable the timer
       become: true
       become_user: root
       ansible.builtin.systemd_service:
@@ -16,7 +16,39 @@
         enabled: false
         state: stopped
 
-    - name: LOGROTATE | Introduce an unmanaged rule overlapping the nginx glob
+    - name: Create an application-owned directory with the owner write bit clear
+      become: true
+      become_user: root
+      ansible.builtin.file:
+        path: /var/log/molecule-owned
+        owner: nobody
+        mode: '0555'
+        state: directory
+
+    - name: Verify that an explicit root rotation account cannot bypass directory checks
+      block:
+        - name: Apply a root rotation rule in the application-owned directory
+          ansible.builtin.include_role:
+            name: "{{ lookup('ansible.builtin.env', 'MOLECULE_PROJECT_DIRECTORY') }}"
+          vars:
+            logrotate_rules:
+              - name: molecule-unsafe
+                path: /var/log/molecule-owned/access.log
+                su_user: root
+                su_group: root
+
+        - name: Report an accepted unsafe rotation rule
+          ansible.builtin.fail:
+            msg: The role accepted privileged rotation in an application-controlled directory.
+
+      rescue:
+        - name: Check the diagnostic for the untrusted directory
+          ansible.builtin.assert:
+            that:
+              - "'/var/log/molecule-owned' in (ansible_failed_result.results | map(attribute='msg', default='') | join(' '))"
+            quiet: true
+
+    - name: Introduce an unmanaged rule overlapping the nginx glob
       become: true
       become_user: root
       ansible.builtin.copy:
@@ -27,19 +59,20 @@
               missingok
           }
 
-    - name: LOGROTATE | Verify that convergence rejects the conflicting installed configuration
+    - name: Verify that convergence rejects the conflicting installed configuration
       block:
-        - name: LOGROTATE | Reapply the role with the unmanaged conflict in place
+        - name: Reapply the role with the unmanaged conflict in place
           ansible.builtin.include_role:
             name: "{{ lookup('ansible.builtin.env', 'MOLECULE_PROJECT_DIRECTORY') }}"
 
-        - name: LOGROTATE | Report an undetected conflict
+        - name: Report an undetected conflict
           ansible.builtin.fail:
             msg: The role accepted two rules for the same active log.
 
       rescue:
-        - name: LOGROTATE | Check the native diagnostic for the overlapping log
+        - name: Check the native diagnostic for the overlapping log
           ansible.builtin.assert:
+            quiet: true
             that:
               - ansible_failed_result.rc | default(0) != 0
               - "'duplicate log entry for /var/log/nginx/molecule-access.log' in __logrotate_diagnostic"
@@ -47,14 +80,21 @@
             __logrotate_diagnostic: "{{ ansible_failed_result.stdout | default('') }} {{ ansible_failed_result.stderr | default('') }}"
 
       always:
-        - name: LOGROTATE | Remove the conflicting test rule
+        - name: Remove the conflicting test rule
           become: true
           become_user: root
           ansible.builtin.file:
             path: "{{ __logrotate_conflict_dir }}/zz-molecule-conflict"
             state: absent
 
-    - name: LOGROTATE | Restore a withdrawn rule to exercise removal on reconvergence
+    - name: Introduce drift in an installed application rule
+      become: true
+      become_user: root
+      ansible.builtin.lineinfile:
+        path: /etc/logrotate.d/molecule-app
+        line: '# Local change before reconvergence.'
+
+    - name: Restore a withdrawn rule to exercise removal on reconvergence
       become: true
       become_user: root
       ansible.builtin.copy:

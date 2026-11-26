@@ -2,11 +2,17 @@
 # role: logrotate
 # file: molecule/resources/playbooks/prepare.yml
 
-- name: LOGROTATE | Prepare web server fixtures
+- name: Prepare web server fixtures
   hosts: all
-  gather_facts: true
+  gather_facts: false
   tasks:
-    - name: LOGROTATE | Install Debian web packages without starting competing listeners
+    - name: Load the role's platform settings
+      ansible.builtin.include_role:
+        name: "{{ lookup('ansible.builtin.env', 'MOLECULE_PROJECT_DIRECTORY') }}"
+        tasks_from: set_vars
+        public: true
+
+    - name: Install Debian web packages without starting competing listeners
       become: true
       become_user: root
       ansible.builtin.apt:
@@ -15,17 +21,17 @@
         policy_rc_d: 101
       when: ansible_facts.os_family == 'Debian'
 
-    - name: LOGROTATE | Install RPM web packages
+    - name: Install RPM web packages
       become: true
       become_user: root
       ansible.builtin.package:
         name:
           - nginx
-          - "{{ 'httpd' if ansible_facts.os_family == 'RedHat' else 'apache2' }}"
+          - "{{ __logrotate_apache_package }}"
         state: present
       when: ansible_facts.os_family != 'Debian'
 
-    - name: LOGROTATE | Supply site defaults that conflict with the managed web and application policies
+    - name: Supply site defaults that conflict with the managed web and application policies
       become: true
       become_user: root
       ansible.builtin.copy:
@@ -41,14 +47,14 @@
           nodelaycompress
           ifempty
 
-    - name: LOGROTATE | Start the packaged Apache service to exercise graceful reload
+    - name: Start the packaged Apache service to exercise graceful reload
       become: true
       become_user: root
       ansible.builtin.systemd_service:
-        name: "{{ 'httpd' if ansible_facts.os_family == 'RedHat' else 'apache2' }}.service"
+        name: "{{ __logrotate_apache_package }}.service"
         state: started
 
-    - name: LOGROTATE | Configure an isolated nginx access log
+    - name: Configure an isolated nginx access log
       become: true
       become_user: root
       ansible.builtin.copy:
@@ -61,7 +67,7 @@
               server { listen 127.0.0.1:8181; return 204; }
           }
 
-    - name: LOGROTATE | Start the nginx writer
+    - name: Start the nginx writer
       become: true
       become_user: root
       ansible.builtin.systemd_service:

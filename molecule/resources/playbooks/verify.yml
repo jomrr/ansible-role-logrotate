@@ -2,13 +2,13 @@
 # role: logrotate
 # file: molecule/resources/playbooks/verify.yml
 
-- name: LOGROTATE | Verify scheduling, retention and live web log rotation
+- name: Verify scheduling, retention and live web log rotation
   hosts: all
   gather_facts: true
   vars:
     __logrotate_apache_dir: "/var/log/{{ 'httpd' if ansible_facts.os_family == 'RedHat' else 'apache2' }}"
   tasks:
-    - name: LOGROTATE | Read the effective systemd timer
+    - name: Read the effective systemd timer
       ansible.builtin.command:
         argv: [systemctl, show, logrotate.timer, -p, ActiveState, -p, UnitFileState, -p, TimersCalendar]
       register: __logrotate_timer
@@ -17,7 +17,7 @@
         __logrotate_timer.rc != 0 or 'ActiveState=active' not in __logrotate_timer.stdout_lines
         or 'UnitFileState=enabled' not in __logrotate_timer.stdout_lines or '/15' not in __logrotate_timer.stdout
 
-    - name: LOGROTATE | Create the packaged Apache log directory
+    - name: Create the packaged Apache log directory
       become: true
       become_user: root
       ansible.builtin.file:
@@ -27,13 +27,13 @@
         group: root
         mode: '0750'
 
-    - name: LOGROTATE | Check that reconvergence removed the withdrawn rule
+    - name: Check that reconvergence removed the withdrawn rule
       ansible.builtin.stat:
         path: /etc/logrotate.d/molecule-retired
       register: __logrotate_retired
       failed_when: __logrotate_retired.stat.exists
 
-    - name: LOGROTATE | Create application logs with private modes
+    - name: Create application logs with private modes
       become: true
       become_user: root
       ansible.builtin.file:
@@ -45,15 +45,16 @@
         - /var/log/logrotate-copy.log
       loop_control:
         loop_var: __logrotate_log
+        label: "{{ __logrotate_log }}"
 
-    - name: LOGROTATE | Record the inode of the file held by a legacy writer
+    - name: Record the inode of the file held by a legacy writer
       become: true
       become_user: root
       ansible.builtin.stat:
         path: /var/log/logrotate-copy.log
       register: __logrotate_copy_before
 
-    - name: LOGROTATE | Seed web and application histories exceeding the site archive count
+    - name: Seed web and application histories exceeding the site archive count
       become: true
       become_user: root
       ansible.builtin.file:
@@ -70,12 +71,13 @@
         loop_var: __logrotate_archive
         label: "{{ __logrotate_archive.0 }} ({{ __logrotate_archive.1 }} days)"
 
-    - name: LOGROTATE | Grow the active logs beyond the configured threshold
+    - name: Grow the active logs beyond the configured threshold
       become: true
       become_user: root
-      ansible.builtin.command:
-        argv: [truncate, -s, 2M, "{{ __logrotate_log }}"]
-      changed_when: true
+      community.general.filesize:
+        path: "{{ __logrotate_log }}"
+        size: 2MiB
+        sparse: true
       loop:
         - /var/log/nginx/molecule-access.log
         - "{{ __logrotate_apache_dir }}/molecule.log"
@@ -83,27 +85,29 @@
         - /var/log/logrotate-copy.log
       loop_control:
         loop_var: __logrotate_log
+        label: "{{ __logrotate_log }}"
 
-    - name: LOGROTATE | Run the distribution rotation service without forcing rotation
+    - name: Run the distribution rotation service without forcing rotation
       become: true
       become_user: root
       ansible.builtin.systemd_service:
         name: logrotate.service
         state: started
 
-    - name: LOGROTATE | Send a request after reopening the nginx log
+    - name: Send a request after reopening the nginx log
       ansible.builtin.uri:
         url: http://127.0.0.1:8181/after-rotation
         status_code: 204
 
-    - name: LOGROTATE | Verify nginx wrote the request to the new active file
+    - name: Verify nginx wrote the request to the new active file
       become: true
       become_user: root
-      ansible.builtin.command:
-        argv: [grep, -F, /after-rotation, /var/log/nginx/molecule-access.log]
-      changed_when: false
+      ansible.builtin.wait_for:
+        path: /var/log/nginx/molecule-access.log
+        search_regex: /after-rotation
+        timeout: 10
 
-    - name: LOGROTATE | Check permissions and size of the replacement application log
+    - name: Check permissions and size of the replacement application log
       become: true
       become_user: root
       ansible.builtin.stat:
@@ -111,7 +115,7 @@
       register: __logrotate_active
       failed_when: __logrotate_active.stat.mode != '0600' or __logrotate_active.stat.size != 0
 
-    - name: LOGROTATE | Check that copytruncate kept the writer inode and emptied the file
+    - name: Check that copytruncate kept the writer inode and emptied the file
       become: true
       become_user: root
       ansible.builtin.stat:
@@ -119,27 +123,29 @@
       register: __logrotate_copy_after
       failed_when: __logrotate_copy_after.stat.inode != __logrotate_copy_before.stat.inode or __logrotate_copy_after.stat.size != 0
 
-    - name: LOGROTATE | Grow the web and application logs again on the same day
+    - name: Grow the web and application logs again on the same day
       become: true
       become_user: root
-      ansible.builtin.command:
-        argv: [truncate, -s, 2M, "{{ __logrotate_log }}"]
-      changed_when: true
+      community.general.filesize:
+        path: "{{ __logrotate_log }}"
+        size: 2MiB
+        sparse: true
       loop:
         - /var/log/nginx/molecule-access.log
         - "{{ __logrotate_apache_dir }}/molecule.log"
         - /var/log/logrotate-probe.log
       loop_control:
         loop_var: __logrotate_log
+        label: "{{ __logrotate_log }}"
 
-    - name: LOGROTATE | Run the normal rotation service a second time
+    - name: Run the normal rotation service a second time
       become: true
       become_user: root
       ansible.builtin.systemd_service:
         name: logrotate.service
         state: started
 
-    - name: LOGROTATE | Check that Apache kept two new archives and four inside the age limit
+    - name: Check that Apache kept two new archives and four inside the age limit
       become: true
       become_user: root
       ansible.builtin.find:
@@ -148,7 +154,7 @@
       register: __logrotate_apache_archives
       failed_when: __logrotate_apache_archives.matched != 6
 
-    - name: LOGROTATE | Verify delayed compression on successive nginx rotations
+    - name: Verify delayed compression on successive nginx rotations
       become: true
       become_user: root
       ansible.builtin.find:
@@ -159,7 +165,7 @@
         __logrotate_nginx_archives.matched != 2 or
         __logrotate_nginx_archives.files | map(attribute='path') | select('search', '[.](gz|xz)$') | length != 1
 
-    - name: LOGROTATE | Locate application archives after age-based cleanup
+    - name: Locate application archives after age-based cleanup
       become: true
       become_user: root
       ansible.builtin.find:
@@ -167,8 +173,9 @@
         patterns: logrotate-probe.log-*
       register: __logrotate_archives
 
-    - name: LOGROTATE | Verify both new rotations and the 88-day archive survived the conflicting site policy
+    - name: Verify both new rotations and the 88-day archive survived the conflicting site policy
       ansible.builtin.assert:
+        quiet: true
         that:
           - __logrotate_archives.matched == 6
           - __logrotate_archives.files | map(attribute='path') | select('search', __logrotate_retained_suffix) | length == 1

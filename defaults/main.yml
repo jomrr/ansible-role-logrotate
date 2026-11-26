@@ -2,6 +2,9 @@
 # role: logrotate
 # file: defaults/main.yml
 
+# Backs up managed files before replacement where the platform can ignore backup copies.
+logrotate_backup: true
+
 # Deletes rotated archives older than this many days (maxage).
 logrotate_retention_days: 90
 
@@ -17,7 +20,7 @@ logrotate_check_interval_minutes: 60
 logrotate_web_servers: []
 # - nginx
 
-# Manages named rule files with su_user and su_group required for log directories writable by a non-root user.
+# Defines named log rules with a non-root rotation account for application-controlled directories.
 logrotate_rules: []
 # - name: example
 #   path: /var/log/example/*.log

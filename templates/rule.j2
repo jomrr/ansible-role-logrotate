@@ -1,17 +1,11 @@
-# Managed by ansible.
+{{ ansible_managed | comment(prefix_count=0, postfix_count=0) }}
 # file: {{ template_destpath }}
 
 {{ __logrotate_rule.path }} {
-    daily
+{% set __logrotate_retention_days = __logrotate_rule.retention_days | default(logrotate_retention_days) %}
+{% filter indent(4, true) %}{% include '_policy.j2' %}{% endfilter +%}
     maxsize {{ __logrotate_rule.max_size_mib | default(logrotate_max_size_mib) }}M
-    rotate -1
-    maxage {{ __logrotate_rule.retention_days | default(logrotate_retention_days) }}
-    dateext
-    dateformat -%Y%m%d-%s
-    compress
-    delaycompress
     missingok
-    notifempty
     create
 {% if __logrotate_rule.su_user is defined %}
     su {{ __logrotate_rule.su_user }} {{ __logrotate_rule.su_group }}

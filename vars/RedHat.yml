@@ -3,6 +3,4 @@
 # file: vars/RedHat.yml
 
 __logrotate_apache_package: httpd
-__logrotate_web_paths:
-  nginx: /var/log/nginx/*.log
-  apache: /var/log/httpd/*log
+__logrotate_apache_patterns: ['*log']

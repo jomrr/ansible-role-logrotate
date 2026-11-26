@@ -26,6 +26,19 @@ collections:
 
 ## Role Variables
 
+### `logrotate_backup`
+
+Type: `bool`. Required: `false`.
+
+Back up managed files before replacement. On openSUSE only the timer override
+supports in-place backups.
+
+Default:
+
+```yaml
+logrotate_backup: true
+```
+
 ### `logrotate_retention_days`
 
 Type: `int`. Required: `false`.
@@ -127,9 +140,12 @@ web profiles also run the distribution's httpd-prerotate hooks.
 - DISA Apache 2.4 UNIX STIG AS24-U1-000710 requires capacity sized for the
   workload. The 100 MiB threshold and hourly checks are operational defaults.
   They are adjustable independently of retention.
-- `su_user` and `su_group` are required when the log directory is writable by a
-  non-root user. Choose an account that can rename and recreate the file. Only
-  administrators should be able to edit rotation rules and service units.
+- Use a non-root `su_user` and its `su_group` for application-controlled log
+  directories. Root rotation requires a root-owned directory without world or
+  non-root-group write access. A non-root owner can change the mode even when
+  its write bit is clear. Choose an account that can rename and recreate the
+  file. Only administrators should be able to edit rotation rules and service
+  units.
 - Fedora ships /var/log/nginx as root:root with mode 0711. Only root can rename
   or create entries there. The openSUSE nginx profile uses `su nginx nginx` for
   its nginx-owned directory. For web profiles that rotate as root, the role
@@ -179,10 +195,11 @@ web profiles also run the distribution's httpd-prerotate hooks.
   their own count, age, file mode or interval. Keep application globs narrow
   enough to exclude archives and paths owned by other rules.
 - Web server adoption is opt-in. It replaces the standard package rule at the
-  same pathname. Review custom hooks and paths before enabling it. Debian and
-  Red Hat family hosts keep module-generated backups. On openSUSE the package
-  runner explicitly passes every file in its drop-in directories to logrotate.
-  Keep backups outside these directories.
+  same pathname. Review custom hooks and paths before enabling it. With
+  `logrotate_backup: true`, Ansible backs up replaced configuration files. On
+  openSUSE this applies only to the timer override because the package runner
+  reads every file in the logrotate drop-in directories as an active rule. Keep
+  manual backups outside those directories.
 
 ## Supported Platforms
 
@@ -212,7 +229,7 @@ logrotate_web_servers: [nginx]
 ---
 - name: Configure log rotation
   hosts: webservers
-  gather_facts: true
+  gather_facts: false
   roles:
     - role: jomrr.logrotate
 ```
@@ -223,7 +240,7 @@ logrotate_web_servers: [nginx]
 ---
 - name: Configure rotation for the web tier and its application
   hosts: webservers
-  gather_facts: true
+  gather_facts: false
   roles:
     - role: jomrr.logrotate
       logrotate_web_servers: [nginx]

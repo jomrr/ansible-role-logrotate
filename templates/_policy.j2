@@ -1,0 +1,8 @@
+daily
+rotate -1
+maxage {{ __logrotate_retention_days | default(logrotate_retention_days) }}
+dateext
+dateformat -%Y%m%d-%s
+compress
+delaycompress
+notifempty

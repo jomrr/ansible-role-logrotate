@@ -1,0 +1,24 @@
+---
+# role: logrotate
+# file: vars/main.yml
+
+__logrotate_required_facts: [os_family]
+__logrotate_required_facts_subsets: ['!all', '!min', distribution]
+
+__logrotate_validate_config: /usr/sbin/logrotate --debug --state /dev/null %s
+__logrotate_validate_rule: /usr/sbin/logrotate --debug --state /dev/null /etc/logrotate.d/00-ansible-policy %s
+# The openSUSE runner reads every file in its drop-in directories, including backups.
+__logrotate_dropin_backup: "{{ logrotate_backup | bool and ansible_facts.os_family != 'Suse' }}"
+
+__logrotate_web_profiles:
+  nginx:
+    package: nginx
+    directory: /var/log/nginx
+    patterns: ['*.log']
+  apache:
+    package: "{{ __logrotate_apache_package }}"
+    directory: "/var/log/{{ __logrotate_apache_package }}"
+    patterns: "{{ __logrotate_apache_patterns }}"
+
+__logrotate_web_profile: "{{ __logrotate_web_profiles[__logrotate_web] }}"
+__logrotate_web_uses_su: "{{ __logrotate_web == 'nginx' and ansible_facts.os_family == 'Suse' }}"

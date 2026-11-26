@@ -1,17 +1,10 @@
-# Managed by ansible.
+{{ ansible_managed | comment(prefix_count=0, postfix_count=0) }}
 # file: {{ template_destpath }}
 
-{{ __logrotate_web_paths[__logrotate_web] }} {
-    daily
+{{ [__logrotate_web_profile.directory] | product(__logrotate_web_profile.patterns) | map('join', '/') | join(' ') }} {
+{% filter indent(4, true) %}{% include '_policy.j2' %}{% endfilter +%}
     maxsize {{ logrotate_max_size_mib }}M
-    rotate -1
-    maxage {{ logrotate_retention_days }}
-    dateext
-    dateformat -%Y%m%d-%s
-    compress
-    delaycompress
     missingok
-    notifempty
     sharedscripts
 {% if __logrotate_web_uses_su %}
     su nginx nginx
@@ -27,11 +20,11 @@
     endscript
 {% endif %}
     postrotate
-        if /usr/bin/systemctl is-active --quiet {{ __logrotate_web_package }}.service; then
+        if /usr/bin/systemctl is-active --quiet {{ __logrotate_web_profile.package }}.service; then
 {% if __logrotate_web == 'nginx' %}
             /usr/bin/systemctl kill --kill-whom=main --signal=USR1 nginx.service
 {% else %}
-            /usr/bin/systemctl reload {{ __logrotate_web_package }}.service
+            /usr/bin/systemctl reload {{ __logrotate_web_profile.package }}.service
 {% endif %}
         fi
     endscript

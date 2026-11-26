@@ -1,0 +1,15 @@
+---
+# role: logrotate
+# file: tasks/set_vars.yml
+
+- name: set_vars | Gather required facts
+  ansible.builtin.setup:
+    gather_subset: "{{ __logrotate_required_facts_subsets }}"
+  when: __logrotate_required_facts | difference(ansible_facts.keys()) | length > 0
+
+- name: set_vars | Load platform settings
+  ansible.builtin.include_vars: "{{ ansible_facts.os_family }}.yml"
+
+- name: set_vars | Identify installed packages for selected web profiles
+  ansible.builtin.package_facts:
+  when: logrotate_web_servers | length > 0

@@ -3,6 +3,4 @@
 # file: vars/Debian.yml
 
 __logrotate_apache_package: apache2
-__logrotate_web_paths:
-  nginx: /var/log/nginx/*.log
-  apache: /var/log/apache2/*.log
+__logrotate_apache_patterns: ['*.log']

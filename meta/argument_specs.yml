@@ -7,6 +7,12 @@ argument_specs:
     short_description: Configure age-based retention, size-aware web log rotation and
       the systemd timer.
     options:
+      logrotate_backup:
+        type: bool
+        default: true
+        description:
+          - Back up managed files before replacement. On openSUSE only the timer override
+            supports in-place backups.
       logrotate_retention_days:
         type: int
         default: 90
@@ -102,8 +108,8 @@ argument_specs:
           su_user:
             type: str
             description:
-              - User performing rotation in an application-owned directory. Specify together
-                with su_group.
+              - Non-root rotation user for an application-controlled directory. Specify
+                together with su_group.
           su_group:
             type: str
             description:

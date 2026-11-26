@@ -2,7 +2,7 @@
 # role: logrotate
 # file: tasks/assert.yml
 
-- name: LOGROTATE | Validate the rotation limits
+- name: assert | Validate the rotation limits
   ansible.builtin.assert:
     that:
       - logrotate_retention_days | int > 0
@@ -10,7 +10,7 @@
       - logrotate_rules | map(attribute='name') | unique(case_sensitive=true) | length == logrotate_rules | length
     quiet: true
 
-- name: LOGROTATE | Validate rule filenames and reserve web package names
+- name: assert | Validate rule filenames and reserve web package names
   ansible.builtin.assert:
     that:
       - __logrotate_rule.name is match('^[A-Za-z][A-Za-z0-9_-]*\Z')
@@ -21,7 +21,7 @@
     loop_var: __logrotate_rule
     label: "{{ __logrotate_rule.name }}"
 
-- name: LOGROTATE | Validate application log paths and overrides
+- name: assert | Validate application log paths and overrides
   ansible.builtin.assert:
     that:
       - __logrotate_rule.path is match('^/(?:[A-Za-z0-9_.@+-]+/)*[A-Za-z0-9_.*@+-]+\Z')
@@ -40,7 +40,7 @@
     label: "{{ __logrotate_rule.name }}"
   when: __logrotate_rule.state | default('present') == 'present'
 
-- name: LOGROTATE | Check rule destinations before replacing or removing files
+- name: assert | Check rule destinations before replacing or removing files
   become: true
   become_user: root
   ansible.builtin.stat:
@@ -54,14 +54,65 @@
     loop_var: __logrotate_rule
     label: "{{ __logrotate_rule.name }}"
 
-- name: LOGROTATE | Check application directories before rotating as root
-  ansible.builtin.include_tasks: check_directory.yml
-  vars:
-    __logrotate_directory: "{{ __logrotate_rule.path | dirname }}"
+- name: assert | Resolve named rotation accounts for present application rules
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ __logrotate_rule.su_user }}"
+  register: __logrotate_accounts
   loop: "{{ logrotate_rules }}"
   loop_control:
     loop_var: __logrotate_rule
     label: "{{ __logrotate_rule.name }}"
   when:
     - __logrotate_rule.state | default('present') == 'present'
-    - __logrotate_rule.su_user is not defined
+    - __logrotate_rule.su_user is defined
+
+- name: assert | Inspect application directories for rules that rotate as root
+  become: true
+  become_user: root
+  ansible.builtin.stat:
+    path: "{{ __logrotate_rule.path | dirname }}"
+    follow: true
+    get_checksum: false
+    get_mime: false
+  register: __logrotate_app_directories
+  loop: "{{ logrotate_rules }}"
+  loop_control:
+    loop_var: __logrotate_rule
+    label: "{{ __logrotate_rule.name }}"
+  when:
+    - __logrotate_rule.state | default('present') == 'present'
+    - __logrotate_rule.su_user is not defined or __logrotate_passwd[__logrotate_rule.su_user].1 | int == 0
+  vars:
+    __logrotate_passwd: "{{ __logrotate_accounts.results | selectattr('ansible_facts', 'defined') | map(attribute='ansible_facts.getent_passwd') | combine }}"
+
+- name: assert | Inspect directories for installed web profiles that rotate as root
+  become: true
+  become_user: root
+  ansible.builtin.stat:
+    path: "{{ __logrotate_web_profile.directory }}"
+    follow: true
+    get_checksum: false
+    get_mime: false
+  register: __logrotate_web_directories
+  loop: "{{ logrotate_web_servers }}"
+  loop_control:
+    loop_var: __logrotate_web
+    label: "{{ __logrotate_web_profile.directory }}"
+  when:
+    - __logrotate_web_profile.package in ansible_facts.packages
+    - not __logrotate_web_uses_su
+
+- name: assert | Require root control of directories used for privileged rotation
+  ansible.builtin.assert:
+    that:
+      - __logrotate_parent.stat.isdir
+      - __logrotate_parent.stat.uid == 0
+      - not __logrotate_parent.stat.woth
+      - __logrotate_parent.stat.gid == 0 or not __logrotate_parent.stat.wgrp
+    fail_msg: "Rotation as root is unsafe in {{ __logrotate_parent.stat.path }}. Use a non-root rotation account or restrict directory control to root."
+    quiet: true
+  loop: "{{ (__logrotate_app_directories.results + __logrotate_web_directories.results) | selectattr('stat', 'defined') | selectattr('stat.exists') }}"
+  loop_control:
+    loop_var: __logrotate_parent
+    label: "{{ __logrotate_parent.stat.path }}"
